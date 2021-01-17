@@ -1,1 +1,5 @@
 .rnd
+*.crt
+*.key
+*.pem
+*/index.txt*

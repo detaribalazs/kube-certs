@@ -5,20 +5,44 @@ ADMIN_ROOT=admin
 
 .PHONY: all
 
-all: ca
+all: ca admin
 
-clean: clean-ca
+clean: clean-ca clean-admin
+
+init: rand-init ca-init
 
 # Initialize rand file
-init:
+rand-init:
 ifeq (,$(wildcard $(RANDFILE)))
-	    dd if=/dev/urandom of=$(RANDFILE) bs=256 count=1
+	dd if=/dev/urandom of=$(RANDFILE) bs=256 count=1
 endif
 
+#Initialize CA
+ca-init: index-init 
+
+# Initialize CA index
+index-init:
+ifeq (,$(wildcard $(CA_ROOT)/index.txt))
+	@touch $(CA_ROOT)/index.txt	
+	@touch $(CA_ROOT)/index.txt.attr
+endif
+	@echo "CA index initialized"
+
+# Initialize CA serial
+serial-init:
+ifeq (,$(wildcard $(CA_ROOT)/index.txt))
+	@touch $(CA_ROOT)/serial
+endif
+	@echo "CA serial initialized"
+
+ca-init: index-init serial-init
+
+# Create self signed CA certificate
 ca: $(CONF_DIR)/ca.cnf init
 	mkdir -p $(CA_ROOT)
 	openssl req -x509 -config $(CONF_DIR)/ca.cnf -rand $(RANDFILE) -new -sha256 -nodes -out $(CA_ROOT)/ca.crt -keyout $(CA_ROOT)/ca.key
 
+# Generate CSR for admin user
 admin-csr: $(CONF_DIR)/client.cnf init
 	mkdir -p $(ADMIN_ROOT)
 	@openssl req -config $(CONF_DIR)/client.cnf \
@@ -31,6 +55,7 @@ admin-csr: $(CONF_DIR)/client.cnf init
 				-keyout $(ADMIN_ROOT)/admin.key
 
 admin: $(CONF_DIR)/client.cnf admin-csr ca
+	echo admin > $(CA_ROOT)/serial
 	@openssl ca -config $(CONF_DIR)/ca.cnf \
 		       -batch \
 		       -rand $(RANDFILE) \
@@ -40,12 +65,19 @@ admin: $(CONF_DIR)/client.cnf admin-csr ca
 			   -out $(ADMIN_ROOT)/admin.crt \
 			   -infiles $(ADMIN_ROOT)/admin.csr
 
-clean-ca:
-	rm $(CA_ROOT)/*.crt || /bin/true
-	rm $(CA_ROOT)/*.key || /bin/true
-	rm $(CA_ROOT)/*.csr || /bin/true
+clean-index:
+	@-rm $(CA_ROOT)/index.txt
+
+clean-serial:
+	@-rm $(CA_ROOT)/serial
+
+clean-ca: clean-index clean-serial
+	@-rm $(CA_ROOT)/*.crt
+	@-rm $(CA_ROOT)/*.key
+	@-rm $(CA_ROOT)/*.csr
+	@-rm $(CA_ROOT)/index.txt
 
 clean-admin:
-	rm $(ADMIN_ROOT)/*.crt || /bin/true
-	rm $(ADMIN_ROOT)/*.key || /bin/true
-	rm $(ADMIN_ROOT)/*.csr || /bin/true
+	@-rm $(ADMIN_ROOT)/*.crt
+	@-rm $(ADMIN_ROOT)/*.key
+	@-rm $(ADMIN_ROOT)/*.csr
